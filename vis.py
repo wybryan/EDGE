@@ -175,6 +175,10 @@ def skeleton_render(
     render=True,
     fps=30,
 ):
+    if stitch:
+        # otherwise it crushes
+        render = False
+
     if render:
         # generate the pose with FK
         Path(out).mkdir(parents=True, exist_ok=True)
