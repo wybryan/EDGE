@@ -70,11 +70,11 @@ def slice_aistpp(motion_dir, wav_dir, stride=0.5, length=5):
         )
 
 
-def slice_beats_aistpp(motion_dir, wav_dir, beats_dir, stride=0.5, length=5):
+def slice_beats_aistpp(motion_dir, wav_dir, beats_dir, stride=0.5, length=5, sliced_dir_str="_sliced"):
     wavs = sorted(glob.glob(f"{wav_dir}/*.wav"))
     motions = sorted(glob.glob(f"{motion_dir}/*.pkl"))
     beats = sorted(glob.glob(f"{beats_dir}/*.txt"))
-    sliced_dir_str = "_beats_sliced"
+    
     wav_out = wav_dir + sliced_dir_str
     motion_out = motion_dir + sliced_dir_str
     os.makedirs(wav_out, exist_ok=True)

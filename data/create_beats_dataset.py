@@ -26,8 +26,8 @@ def create_dataset(opt):
     slice_beats_aistpp(f"train/motions", f"train/wavs", f"train/beats", opt.stride, opt.length)
 
     # copy music features
-    copy_music_feats("train/wavs_beats_sliced", "train/baseline_feats", "train/baseline_beats_feats")
-    copy_music_feats("train/wavs_beats_sliced", "train/jukebox_feats", "train/jukebox_beats_feats")
+    copy_music_feats("train/wavs_sliced", "train_0/baseline_feats", "train/baseline_feats")
+    copy_music_feats("train/wavs_sliced", "train_0/jukebox_feats", "train/jukebox_feats")
 
 
 def parse_opt():
