@@ -1,12 +1,20 @@
 import argparse
 import os
 from pathlib import Path
+import shutil
 
-from audio_extraction.baseline_features import \
-    extract_folder as baseline_extract
-from audio_extraction.jukebox_features import extract_folder as jukebox_extract
 from filter_split_data import *
 from slice import *
+
+
+def copy_music_feats(search_dir, source_dir, dest_dir):
+    os.makedirs(dest_dir, exist_ok=True)
+    fpaths = Path(search_dir).glob("*")
+    for fpath in fpaths:
+        audio_name = Path(fpath).stem
+        save_path = os.path.join(dest_dir, audio_name + ".npy")
+        source_f = os.path.join(source_dir, os.path.basename(save_path))
+        shutil.copy(source_f, save_path)
 
 
 def create_dataset(opt):
@@ -16,6 +24,10 @@ def create_dataset(opt):
     # slice motions/music into sliding windows to create training dataset
     print("Slicing train data")
     slice_beats_aistpp(f"train/motions", f"train/wavs", f"train/beats", opt.stride, opt.length)
+
+    # copy music features
+    copy_music_feats("train/wavs_beats_sliced", "train/baseline_feats", "train/baseline_beats_feats")
+    copy_music_feats("train/wavs_beats_sliced", "train/jukebox_feats", "train/jukebox_beats_feats")
 
 
 def parse_opt():
