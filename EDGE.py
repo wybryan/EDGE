@@ -33,11 +33,14 @@ class EDGE:
         self,
         feature_type,
         checkpoint_path="",
+        load_optim_state=False,
+        use_beats_anno=False,
         normalizer=None,
         EMA=True,
         learning_rate=4e-4,
         weight_decay=0.02,
     ):
+        self.use_beats_anno = use_beats_anno
         ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
         self.accelerator = Accelerator(kwargs_handlers=[ddp_kwargs])
         state = AcceleratorState()
@@ -106,7 +109,8 @@ class EDGE:
                     num_processes,
                 )
             )
-            self.optim.load_state_dict(checkpoint["optimizer_state_dict"])
+            if load_optim_state:
+                self.optim.load_state_dict(checkpoint["optimizer_state_dict"])
 
     def eval(self):
         self.diffusion.eval()
@@ -200,6 +204,9 @@ class EDGE:
             for step, (x, cond, filename, wavnames, beats) in enumerate(
                 load_loop(train_data_loader)
             ):
+                if not self.use_beats_anno:
+                    beats = []
+
                 total_loss, (loss, v_loss, fk_loss, foot_loss) = self.diffusion(
                     x, cond, beats, t_override=None
                 )
