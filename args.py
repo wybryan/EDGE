@@ -39,6 +39,12 @@ def parse_train_opt():
         "--checkpoint", type=str, default="", help="trained checkpoint path (optional)"
     )
     parser.add_argument(
+        "--load_optim_state", action="store_true", help="load optimizer state from ckpt"
+    )
+    parser.add_argument(
+        "--use_beats_anno", action="store_true", help="use beats annotation if any"
+    )
+    parser.add_argument(
         "--start_epoch", type=int, default=0, help="trained checkpoint path (optional)"
     )
     parser.add_argument("--learning_rate", type=float, default=0.0002, help="learning rate")

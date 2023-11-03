@@ -84,7 +84,10 @@ class AISTPPDataset(Dataset):
     def __getitem__(self, idx):
         filename_ = self.data["filenames"][idx]
         feature = torch.from_numpy(np.load(filename_))
-        return self.data["pose"][idx], feature, filename_, self.data["wavs"][idx], self.data["beats"][idx]
+        beats_mask = []
+        if len(self.data["beats"]) > 0:
+            beats_mask = self.data["beats"][idx]
+        return self.data["pose"][idx], feature, filename_, self.data["wavs"][idx], beats_mask
 
     def load_aistpp(self):
         # open data path
@@ -146,7 +149,9 @@ class AISTPPDataset(Dataset):
         all_q = all_q[:, :: self.data_stride, :]
 
         if len(all_beats) > 0:
-            all_beats = all_beats[:, :: self.data_stride, :]
+            all_beats = np.array(all_beats)
+            all_beats = all_beats[:, :: self.data_stride]
+            all_beats = np.expand_dims(all_beats, -1)
 
         data = {"pos": all_pos, "q": all_q, "filenames": all_names, "wavs": all_wavs, "beats": all_beats}
         return data
