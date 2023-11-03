@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import pickle
 
 import librosa as lr
 import matplotlib.animation as animation
@@ -11,8 +12,11 @@ import torch
 from matplotlib import cm
 from matplotlib.colors import ListedColormap
 from pytorch3d.transforms import (axis_angle_to_quaternion, quaternion_apply,
-                                  quaternion_multiply)
+                                  quaternion_multiply, quaternion_to_axis_angle,
+                                  RotateAxisAngle)
 from tqdm import tqdm
+
+from dataset.quaternion import ax_from_6v
 
 smpl_joints = [
     "root",  # 0
@@ -168,7 +172,8 @@ def skeleton_render(
     stitch=False,
     sound_folder="ood_sliced",
     contact=None,
-    render=True
+    render=True,
+    fps=30,
 ):
     if render:
         # generate the pose with FK
@@ -211,18 +216,25 @@ def skeleton_render(
             plot_single_pose,
             num_steps,
             fargs=(poses, lines, ax, axrange, scat, contact),
-            interval=1000 // 30,
+            interval=1000 // fps,
         )
     if sound:
         # make a temporary directory to save the intermediate gif in
         if render:
-            temp_dir = TemporaryDirectory()
-            gifname = os.path.join(temp_dir.name, f"{epoch}.gif")
-            anim.save(gifname)
+            # temp_dir = TemporaryDirectory()
+            # gifname = os.path.join(temp_dir.name, f"{epoch}.gif")
+            # anim.save(gifname)
+            
+            # actually save the gif
+            path = os.path.normpath(name)
+            pathparts = path.split(os.sep)
+            gifname = os.path.join(out, f"{pathparts[-1][:-4]}.gif")
+            anim.save(gifname, savefig_kwargs={"transparent": True, "facecolor": "none"}, fps=fps)
 
         # stitch wavs
         if stitch:
             assert type(name) == list  # must be a list of names to do stitching
+            temp_dir = TemporaryDirectory()
             name_ = [os.path.splitext(x)[0] + ".wav" for x in name]
             audio, sr = lr.load(name_[0], sr=None)
             ll, half = len(audio), len(audio) // 2
@@ -249,7 +261,7 @@ def skeleton_render(
             )
         if render:
             out = os.system(
-                f"ffmpeg -loglevel error -stream_loop 0 -y -i {gifname} -i {audioname} -shortest -c:v libx264 -crf 26 -c:a aac -q:a 4 {outname}"
+                f"ffmpeg -loglevel error -stream_loop 0 -y -r {fps} -i {gifname} -i {audioname} -shortest -c:v libx264 -crf 26 -c:a aac -q:a 4 {outname}"
             )
     else:
         if render:
@@ -257,7 +269,7 @@ def skeleton_render(
             path = os.path.normpath(name)
             pathparts = path.split(os.sep)
             gifname = os.path.join(out, f"{pathparts[-1][:-4]}.gif")
-            anim.save(gifname, savefig_kwargs={"transparent": True, "facecolor": "none"},)
+            anim.save(gifname, savefig_kwargs={"transparent": True, "facecolor": "none"}, fps=fps)
     plt.close()
 
 
@@ -331,3 +343,156 @@ class SMPLSkeleton:
                     rotations_world.append(None)
 
         return torch.stack(positions_world, dim=3).permute(0, 1, 3, 2)
+
+
+def visualize_data(
+    motion_file_or_motion_data,
+    wav_file=None,
+    fps_override=None,
+    render_out_dir="debug/",
+    render_gif_fname="vis.gif",
+):
+    def process_dataset(root_pos, local_q):
+        # FK skeleton
+        smpl = SMPLSkeleton()
+        # to Tensor
+        root_pos = torch.Tensor(root_pos)
+        local_q = torch.Tensor(local_q)
+        # to ax
+        bs, sq, c = local_q.shape
+        local_q = local_q.reshape((bs, sq, -1, 3))
+
+        # AISTPP dataset comes y-up - rotate to z-up to standardize against the pretrain dataset
+        root_q = local_q[:, :, :1, :]  # sequence x 1 x 3
+        root_q_quat = axis_angle_to_quaternion(root_q)
+        rotation = torch.Tensor(
+            [0.7071068, 0.7071068, 0, 0]
+        )  # 90 degrees about the x axis
+        root_q_quat = quaternion_multiply(rotation, root_q_quat)
+        root_q = quaternion_to_axis_angle(root_q_quat)
+        local_q[:, :, :1, :] = root_q
+
+        # don't forget to rotate the root position too 😩
+        pos_rotation = RotateAxisAngle(90, axis="X", degrees=True)
+        root_pos = pos_rotation.transform_points(
+            root_pos
+        )  # basically (y, z) -> (-z, y), expressed as a rotation for readability
+
+        # do FK
+        positions = smpl.forward(local_q, root_pos)  # batch x sequence x 24 x 3
+        feet = positions[:, :, (7, 8, 10, 11)]
+        feetv = torch.zeros(feet.shape[:3])
+        feetv[:, :-1] = (feet[:, 1:] - feet[:, :-1]).norm(dim=-1)
+        contacts = (feetv < 0.01).to(local_q)  # cast to right dtype
+
+        return positions, contacts
+
+    if isinstance(motion_file_or_motion_data, str):
+        motion_file = motion_file_or_motion_data
+        with open(motion_file, "rb") as f:
+            motion = pickle.load(f)
+
+        if "scale" in motion.keys():
+            # this is AST++ dataset
+            # hardcoded in skeleton_render
+            raw_fps = 60
+            if fps_override is not None:
+                raw_fps = fps_override
+
+            pos, q = motion["pos"], motion["q"]
+            scale = motion["scale"][0]
+            
+            # normalize root position
+            pos /= scale
+            
+            pos = np.expand_dims(pos, 0)
+            q = np.expand_dims(q, 0)
+            poses, contacts = process_dataset(pos, q)
+
+            if wav_file is not None:
+                render_gif_fname = wav_file
+
+            skeleton_render(
+                poses[0],
+                contact=contacts[0],
+                epoch="",
+                out=render_out_dir,
+                name=render_gif_fname,
+                sound=True if wav_file is not None else False,
+                stitch=False,
+                render=True,
+                fps=raw_fps,
+            )
+        elif "full_pose" in motion.keys():
+            # this is model generated motion pickle
+            raw_fps = 30
+            if fps_override is not None:
+                raw_fps = fps_override
+            
+            if wav_file is not None:
+                render_gif_fname = wav_file
+
+            poses = motion["full_pose"]
+            if len(poses.shape) < 4:
+                poses = np.expand_dims(poses, 0)
+
+            skeleton_render(
+                poses[0],
+                contact=None,
+                epoch="",
+                out=render_out_dir,
+                name=render_gif_fname,
+                sound=True if wav_file is not None else False,
+                stitch=False,
+                render=True,
+                fps=raw_fps,
+            )
+        else:
+            raise NotImplementedError
+    elif isinstance(motion_file_or_motion_data, torch.Tensor):
+        x = motion_file_or_motion_data
+        if len(x.shape) < 3:
+            x = x.unsqueeze(0)
+
+        if x.shape[2] == 151:
+            contacts, x = torch.split(
+                x, (4, x.shape[2] - 4), dim=2
+            )
+        else:
+            contacts = None
+
+        # do the FK all at once
+        b, s, c = x.shape
+        pos = x[:, :, :3]  # np.zeros((sample.shape[0], 3))
+        q = x[:, :, 3:].reshape(b, s, 24, 6)
+        # go 6d to ax
+        q = ax_from_6v(q)
+
+        poses = SMPLSkeleton().forward(q, pos).detach().cpu().numpy()
+        contacts = (
+            contacts.detach().cpu().numpy()
+            if contacts is not None
+            else None
+        )
+
+        # hardcoded in skeleton_render
+        raw_fps = 30
+        if fps_override is not None:
+            raw_fps = fps_override
+
+        if wav_file is not None:
+            render_gif_fname = wav_file
+
+        skeleton_render(
+            poses[0],
+            contact=contacts[0],
+            epoch="",
+            out=render_out_dir,
+            name=render_gif_fname,
+            sound=True if wav_file is not None else False,
+            stitch=False,
+            render=True,
+            fps=raw_fps,
+        )
+    else:
+        raise NotImplementedError

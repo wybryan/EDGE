@@ -3,7 +3,11 @@ from EDGE import EDGE
 
 
 def train(opt):
-    model = EDGE(opt.feature_type)
+    model = EDGE(
+        opt.feature_type,
+        learning_rate=opt.learning_rate,
+        checkpoint_path=opt.checkpoint,
+    )
     model.train_loop(opt)
 
 

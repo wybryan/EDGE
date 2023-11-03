@@ -39,8 +39,9 @@ stringintkey = cmp_to_key(stringintcmp_)
 
 def test(opt):
     feature_func = juke_extract if opt.feature_type == "jukebox" else baseline_extract
+    stride_length = opt.stride
     sample_length = opt.out_length
-    sample_size = int(sample_length / 2.5) - 1
+    sample_size = int(sample_length / stride_length) - 1
 
     temp_dir_list = []
     all_cond = []
@@ -54,9 +55,9 @@ def test(opt):
             juke_file_list = sorted(glob.glob(f"{dir}/*.npy"), key=stringintkey)
             assert len(file_list) == len(juke_file_list)
             # random chunk after sanity check
-            rand_idx = random.randint(0, len(file_list) - sample_size)
+            rand_idx = random.randint(0, max(0, len(file_list) - sample_size))
             file_list = file_list[rand_idx : rand_idx + sample_size]
-            juke_file_list = juke_file_list[rand_idx : rand_idx + sample_size]
+            juke_file_list = juke_file_list[rand_idx : rand_idx + min(len(file_list), sample_size)]
             cond_list = [np.load(x) for x in juke_file_list]
             all_filenames.append(file_list)
             all_cond.append(torch.from_numpy(np.array(cond_list)))
@@ -75,10 +76,10 @@ def test(opt):
                 dirname = temp_dir.name
             # slice the audio file
             print(f"Slicing {wav_file}")
-            slice_audio(wav_file, 2.5, 5.0, dirname)
+            slice_audio(wav_file, stride_length, 5.0, dirname)
             file_list = sorted(glob.glob(f"{dirname}/*.wav"), key=stringintkey)
             # randomly sample a chunk of length at most sample_size
-            rand_idx = random.randint(0, len(file_list) - sample_size)
+            rand_idx = random.randint(0, max(0, len(file_list) - sample_size))
             cond_list = []
             # generate juke representations
             print(f"Computing features for {wav_file}")
@@ -101,7 +102,7 @@ def test(opt):
                     cond_list.append(reps)
             cond_list = torch.from_numpy(np.array(cond_list))
             all_cond.append(cond_list)
-            all_filenames.append(file_list[rand_idx : rand_idx + sample_size])
+            all_filenames.append(file_list[rand_idx : rand_idx + min(len(file_list), sample_size)])
 
     model = EDGE(opt.feature_type, opt.checkpoint)
     model.eval()
@@ -125,4 +126,8 @@ def test(opt):
 
 if __name__ == "__main__":
     opt = parse_test_opt()
+    # opt.out_length = 10
+    # opt.music_dir = "custom_music/"
+    # opt.motion_save_dir = "eval/custom_motion"
+    # opt.no_render = True
     test(opt)
