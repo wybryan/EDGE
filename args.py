@@ -38,6 +38,10 @@ def parse_train_opt():
     parser.add_argument(
         "--checkpoint", type=str, default="", help="trained checkpoint path (optional)"
     )
+    parser.add_argument(
+        "--start_epoch", type=int, default=0, help="trained checkpoint path (optional)"
+    )
+    parser.add_argument("--learning_rate", type=float, default=0.0002, help="learning rate")
     opt = parser.parse_args()
     return opt
 
@@ -45,7 +49,8 @@ def parse_train_opt():
 def parse_test_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument("--feature_type", type=str, default="jukebox")
-    parser.add_argument("--out_length", type=float, default=30, help="max. length of output, in seconds")
+    parser.add_argument("--stride", type=float, default=0.5, help="stride length")
+    parser.add_argument("--out_length", type=float, default=5, help="max. length of output, in seconds")
     parser.add_argument(
         "--processed_data_dir",
         type=str,
@@ -65,7 +70,7 @@ def parse_test_opt():
         help="folder containing input music",
     )
     parser.add_argument(
-        "--save_motions", action="store_true", help="Saves the motions for evaluation"
+        "--save_motions", default=True, action="store_true", help="Saves the motions for evaluation"
     )
     parser.add_argument(
         "--motion_save_dir",
