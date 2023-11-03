@@ -73,6 +73,7 @@ class AISTPPDataset(Dataset):
             "pose": pose_input,
             "filenames": data["filenames"],
             "wavs": data["wavs"],
+            "beats": data["beats"],
         }
         assert len(pose_input) == len(data["filenames"])
         self.length = len(pose_input)
@@ -83,7 +84,7 @@ class AISTPPDataset(Dataset):
     def __getitem__(self, idx):
         filename_ = self.data["filenames"][idx]
         feature = torch.from_numpy(np.load(filename_))
-        return self.data["pose"][idx], feature, filename_, self.data["wavs"][idx]
+        return self.data["pose"][idx], feature, filename_, self.data["wavs"][idx], self.data["beats"][idx]
 
     def load_aistpp(self):
         # open data path
@@ -114,6 +115,7 @@ class AISTPPDataset(Dataset):
         all_q = []
         all_names = []
         all_wavs = []
+        all_beats = []
         assert len(motions) == len(features)
         for motion, feature, wav in zip(motions, features, wavs):
             # make sure name is matching
@@ -125,6 +127,12 @@ class AISTPPDataset(Dataset):
             data = pickle.load(open(motion, "rb"))
             pos = data["pos"]
             q = data["q"]
+
+            # beat annotation
+            beat = data.get("beat", None)
+            if beat is not None:
+                all_beats.append(beat)
+
             all_pos.append(pos)
             all_q.append(q)
             all_names.append(feature)
@@ -136,7 +144,11 @@ class AISTPPDataset(Dataset):
         print(all_pos.shape)
         all_pos = all_pos[:, :: self.data_stride, :]
         all_q = all_q[:, :: self.data_stride, :]
-        data = {"pos": all_pos, "q": all_q, "filenames": all_names, "wavs": all_wavs}
+
+        if len(all_beats) > 0:
+            all_beats = all_beats[:, :: self.data_stride, :]
+
+        data = {"pos": all_pos, "q": all_q, "filenames": all_names, "wavs": all_wavs, "beats": all_beats}
         return data
 
     def process_dataset(self, root_pos, local_q):

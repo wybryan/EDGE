@@ -444,7 +444,7 @@ class GaussianDiffusion(nn.Module):
 
         return sample
 
-    def p_losses(self, x_start, cond, t):
+    def p_losses(self, x_start, cond, t, beat_mask):
         noise = torch.randn_like(x_start)
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
 
@@ -460,6 +460,11 @@ class GaussianDiffusion(nn.Module):
 
         # full reconstruction loss
         loss = self.loss_fn(model_out, target, reduction="none")
+
+        if len(beat_mask) > 0:
+            # add beat loss
+            loss += beat_mask * loss
+
         loss = reduce(loss, "b ... -> b (...)", "mean")
         loss = loss * extract(self.p2_loss_weight, t, loss.shape)
 
@@ -519,16 +524,16 @@ class GaussianDiffusion(nn.Module):
         )
         return sum(losses), losses
 
-    def loss(self, x, cond, t_override=None):
+    def loss(self, x, cond, beats, t_override=None):
         batch_size = len(x)
         if t_override is None:
             t = torch.randint(0, self.n_timestep, (batch_size,), device=x.device).long()
         else:
             t = torch.full((batch_size,), t_override, device=x.device).long()
-        return self.p_losses(x, cond, t)
+        return self.p_losses(x, cond, t, beats)
 
-    def forward(self, x, cond, t_override=None):
-        return self.loss(x, cond, t_override)
+    def forward(self, x, cond, beats, t_override=None):
+        return self.loss(x, cond, beats, t_override)
 
     def partial_denoise(self, x, cond, t):
         x_noisy = self.noise_to_t(x, t)

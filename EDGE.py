@@ -106,6 +106,7 @@ class EDGE:
                     num_processes,
                 )
             )
+            self.optim.load_state_dict(checkpoint["optimizer_state_dict"])
 
     def eval(self):
         self.diffusion.eval()
@@ -189,18 +190,18 @@ class EDGE:
             wdir.mkdir(parents=True, exist_ok=True)
 
         self.accelerator.wait_for_everyone()
-        for epoch in range(1, opt.epochs + 1):
+        for epoch in range(opt.start_epoch + 1, opt.epochs + 1):
             avg_loss = 0
             avg_vloss = 0
             avg_fkloss = 0
             avg_footloss = 0
             # train
             self.train()
-            for step, (x, cond, filename, wavnames) in enumerate(
+            for step, (x, cond, filename, wavnames, beats) in enumerate(
                 load_loop(train_data_loader)
             ):
                 total_loss, (loss, v_loss, fk_loss, foot_loss) = self.diffusion(
-                    x, cond, t_override=None
+                    x, cond, beats, t_override=None
                 )
                 self.optim.zero_grad()
                 self.accelerator.backward(total_loss)
@@ -250,7 +251,7 @@ class EDGE:
                     shape = (render_count, self.horizon, self.repr_dim)
                     print("Generating Sample")
                     # draw a music from the test dataset
-                    (x, cond, filename, wavnames) = next(iter(test_data_loader))
+                    (x, cond, filename, wavnames, _) = next(iter(test_data_loader))
                     cond = cond.to(self.accelerator.device)
                     self.diffusion.render_sample(
                         shape,
