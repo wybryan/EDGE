@@ -463,7 +463,7 @@ class GaussianDiffusion(nn.Module):
 
         if len(beat_mask) > 0:
             # add beat loss
-            loss += beat_mask * loss
+            loss = loss + beat_mask * loss.mean(dim=-1, keepdim=True)
 
         loss = reduce(loss, "b ... -> b (...)", "mean")
         loss = loss * extract(self.p2_loss_weight, t, loss.shape)
