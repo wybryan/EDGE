@@ -10,6 +10,7 @@ def train(opt):
         checkpoint_path=opt.checkpoint,
         load_optim_state=opt.load_optim_state,
         use_beats_anno=opt.use_beats_anno,
+        freeze_layers=opt.freeze_layers,
     )
     model.train_loop(opt)
 
@@ -22,11 +23,15 @@ if __name__ == "__main__":
     # opt.batch_size = 128
     # opt.checkpoint = "/Projects/Github/paper_project/EDGE/checkpoint.pt"
     # opt.load_optim_state = False
-    # opt.save_interval = 50
+    # opt.save_interval = 1
     # opt.start_epoch = 0
-    # opt.epochs = 100
+    # opt.epochs = 5
     # opt.feature_type = "jukebox"
-    # opt.learning_rate = 0.0002
+    # opt.learning_rate = 1e-5
     opt.no_cache = True
     opt.force_reload = True
+    opt.use_beats_anno = True
+
+    #freeze layers
+    # opt.freeze_layers = False
     train(opt)

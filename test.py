@@ -104,13 +104,14 @@ def test(opt):
             all_cond.append(cond_list)
             all_filenames.append(file_list[rand_idx : rand_idx + min(len(file_list), sample_size)])
 
-    model = EDGE(opt.feature_type, opt.checkpoint)
+    model = EDGE(opt.feature_type, opt.checkpoint, EMA=False)
     model.eval()
 
     # directory for optionally saving the dances for eval
     fk_out = None
     if opt.save_motions:
         fk_out = opt.motion_save_dir
+        os.makedirs(fk_out, exist_ok=True)
 
     print("Generating dances")
     for i in range(len(all_cond)):
@@ -126,8 +127,12 @@ def test(opt):
 
 if __name__ == "__main__":
     opt = parse_test_opt()
-    # opt.out_length = 10
-    # opt.music_dir = "custom_music/"
-    # opt.motion_save_dir = "eval/custom_motion"
-    # opt.no_render = True
-    test(opt)
+    opt.out_length = 10
+    opt.no_render = True
+    exp_name = "exp18"
+    for i in range(10):
+        epoch_no = i + 1
+        opt.motion_save_dir = f"eval/{exp_name}/beats_on_motion_{epoch_no}e"
+        opt.render_dir = opt.motion_save_dir
+        opt.checkpoint = f"/Projects/Github/paper_project/EDGE/runs/train/{exp_name}/weights/train-{epoch_no}.pt"
+        test(opt)
