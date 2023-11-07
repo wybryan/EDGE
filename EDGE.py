@@ -35,6 +35,7 @@ class EDGE:
         checkpoint_path="",
         load_optim_state=False,
         use_beats_anno=False,
+        freeze_layers=False,
         normalizer=None,
         EMA=True,
         learning_rate=4e-4,
@@ -77,6 +78,9 @@ class EDGE:
             cond_feature_dim=feature_dim,
             activation=F.gelu,
         )
+        if freeze_layers:
+            print("freeze layers")
+            self.freeze_layers(model)
 
         smpl = SMPLSkeleton(self.accelerator.device)
         diffusion = GaussianDiffusion(
@@ -99,7 +103,7 @@ class EDGE:
 
         self.model = self.accelerator.prepare(model)
         self.diffusion = diffusion.to(self.accelerator.device)
-        optim = Adan(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        optim = Adan(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate, weight_decay=weight_decay)
         self.optim = self.accelerator.prepare(optim)
 
         if checkpoint_path != "":
@@ -111,6 +115,11 @@ class EDGE:
             )
             if load_optim_state:
                 self.optim.load_state_dict(checkpoint["optimizer_state_dict"])
+
+    def freeze_layers(self, model):
+        for name, param in model.named_parameters():
+            if not name.startswith("final_layer"):
+                param.requires_grad = False
 
     def eval(self):
         self.diffusion.eval()
@@ -272,6 +281,58 @@ class EDGE:
                     print(f"[MODEL SAVED at Epoch {epoch}]")
         if self.accelerator.is_main_process:
             wandb.run.finish()
+
+    # @torch.no_grad() -- diffusion model already has this
+    def validate_loop(self, opt, output_dir, data_idx_list=None, data_fname_list=None):
+        test_dataset = AISTPPDataset(
+            data_path=opt.data_path,
+            backup_path=opt.processed_data_dir,
+            train=False,
+            normalizer=self.normalizer,
+            force_reload=opt.force_reload,
+        )
+
+        # data loaders
+        # decide number of workers based on cpu count
+        num_cpus = multiprocessing.cpu_count()
+        test_data_loader = DataLoader(
+            test_dataset,
+            batch_size=1,
+            shuffle=False,
+            num_workers=2,
+            pin_memory=True,
+            drop_last=True,
+        )
+        
+        self.eval()
+        # generate a sample
+        for idx, (x, cond, filename, wavnames, _) in enumerate(test_data_loader):
+            if data_idx_list is not None:
+                if idx not in data_idx_list:
+                    continue
+            if data_fname_list is not None:
+                fname = os.path.basename(wavnames[0])
+                fname = "".join(fname.split(".")[:-1])
+                if fname not in data_fname_list:
+                    continue
+
+            print("Generating Sample")
+            render_count = 1
+            cond = cond.to(self.accelerator.device)
+            os.makedirs(output_dir, exist_ok=True)
+            self.diffusion.render_sample(
+                (render_count, self.horizon, self.repr_dim),
+                cond[:render_count],
+                self.normalizer,
+                idx,
+                render_out=output_dir,
+                fk_out=output_dir,
+                name=wavnames[:render_count],
+                sound=True,
+                mode="normal",
+                render=True,
+            )
+           
 
     def render_sample(
         self, data_tuple, label, render_dir, render_count=-1, fk_out=None, render=True
