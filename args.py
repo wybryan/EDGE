@@ -45,6 +45,9 @@ def parse_train_opt():
         "--use_beats_anno", action="store_true", help="use beats annotation if any"
     )
     parser.add_argument(
+        "--freeze_layers", default=False, help="Fine tuning with freeze layers"
+    )
+    parser.add_argument(
         "--start_epoch", type=int, default=0, help="trained checkpoint path (optional)"
     )
     parser.add_argument("--learning_rate", type=float, default=0.0002, help="learning rate")
