@@ -10,6 +10,7 @@ def train(opt):
         checkpoint_path=opt.checkpoint,
         load_optim_state=opt.load_optim_state,
         use_beats_anno=opt.use_beats_anno,
+        use_music_beat_feat=opt.use_music_beat_feat,
         freeze_layers=opt.freeze_layers,
     )
     model.train_loop(opt)

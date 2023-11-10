@@ -254,6 +254,7 @@ class DanceDecoder(nn.Module):
         super().__init__()
 
         output_feats = nfeats
+        self.latent_dim = latent_dim
 
         # positional embeddings
         self.rotary = None
@@ -328,14 +329,18 @@ class DanceDecoder(nn.Module):
         
         self.final_layer = nn.Linear(latent_dim, output_feats)
 
-    def guided_forward(self, x, cond_embed, times, guidance_weight):
-        unc = self.forward(x, cond_embed, times, cond_drop_prob=1)
-        conditioned = self.forward(x, cond_embed, times, cond_drop_prob=0)
+    def add_beat_projection_module(self):
+        # beat projector
+        self.beat_proj = BeatProjection(self.latent_dim, self.latent_dim).to(next(self.parameters()).device)
+
+    def guided_forward(self, x, cond_embed, times, beat_feat, guidance_weight):
+        unc = self.forward(x, cond_embed, times, beat_feat, cond_drop_prob=1)
+        conditioned = self.forward(x, cond_embed, times, beat_feat, cond_drop_prob=0)
 
         return unc + (conditioned - unc) * guidance_weight
 
     def forward(
-        self, x: Tensor, cond_embed: Tensor, times: Tensor, cond_drop_prob: float = 0.0
+        self, x: Tensor, cond_embed: Tensor, times: Tensor, beat_seq: Tensor = None, cond_drop_prob: float = 0.0
     ):
         batch_size, device = x.shape[0], x.device
 
@@ -380,5 +385,25 @@ class DanceDecoder(nn.Module):
         # attending to the conditional embedding
         output = self.seqTransDecoder(x, cond_tokens, t)
 
+        if beat_seq is not None:
+            beat_feat = self.beat_proj(beat_seq.to(x.device))
+            output = output + beat_feat
+
         output = self.final_layer(output)
         return output
+
+
+class BeatProjection(nn.Module):
+    def __init__(self, hidden_size=512, output_size=512):
+        super(BeatProjection, self).__init__()
+        self.fc1 = nn.Linear(2, hidden_size)
+        self.relu1 = nn.ReLU()
+        self.out = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+        x = F.one_hot(x, num_classes=2)
+        x = x.to(self.fc1.weight.dtype)
+        x = self.fc1(x)
+        x = self.relu1(x)
+        x = self.out(x)
+        return x

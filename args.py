@@ -45,6 +45,9 @@ def parse_train_opt():
         "--use_beats_anno", action="store_true", help="use beats annotation if any"
     )
     parser.add_argument(
+        "--use_music_beat_feat", action="store_true", help="use beat onehot feature"
+    )
+    parser.add_argument(
         "--freeze_layers", action="store_true", help="Fine tuning with freeze layers"
     )
     parser.add_argument(
@@ -80,6 +83,9 @@ def parse_test_opt():
     )
     parser.add_argument(
         "--save_motions", default=True, action="store_true", help="Saves the motions for evaluation"
+    )
+    parser.add_argument(
+        "--use_music_beat_feat", action="store_true", help="beat feature module"
     )
     parser.add_argument(
         "--motion_save_dir",

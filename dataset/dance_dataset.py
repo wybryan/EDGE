@@ -74,6 +74,7 @@ class AISTPPDataset(Dataset):
             "filenames": data["filenames"],
             "wavs": data["wavs"],
             "beats": data["beats"],
+            "beats_fnames": data["beats_fnames"],
         }
         assert len(pose_input) == len(data["filenames"])
         self.length = len(pose_input)
@@ -84,10 +85,12 @@ class AISTPPDataset(Dataset):
     def __getitem__(self, idx):
         filename_ = self.data["filenames"][idx]
         feature = torch.from_numpy(np.load(filename_))
+        beat_onehot = torch.from_numpy(np.load(self.data["beats_fnames"][idx]))[..., -1]
+        beat_onehot = beat_onehot.long()
         beats_mask = []
         if len(self.data["beats"]) > 0:
             beats_mask = self.data["beats"][idx]
-        return self.data["pose"][idx], feature, filename_, self.data["wavs"][idx], beats_mask
+        return self.data["pose"][idx], feature, filename_, self.data["wavs"][idx], beats_mask, beat_onehot
 
     def load_aistpp(self):
         # open data path
@@ -107,10 +110,12 @@ class AISTPPDataset(Dataset):
 
         motion_path = os.path.join(split_data_path, "motions_sliced")
         sound_path = os.path.join(split_data_path, f"{self.feature_type}_feats")
+        base_feat_path = os.path.join(split_data_path, f"baseline_feats")
         wav_path = os.path.join(split_data_path, f"wavs_sliced")
         # sort motions and sounds
         motions = sorted(glob.glob(os.path.join(motion_path, "*.pkl")))
         features = sorted(glob.glob(os.path.join(sound_path, "*.npy")))
+        base_features = sorted(glob.glob(os.path.join(base_feat_path, "*.npy")))
         wavs = sorted(glob.glob(os.path.join(wav_path, "*.wav")))
 
         # stack the motions and features together
@@ -119,13 +124,15 @@ class AISTPPDataset(Dataset):
         all_names = []
         all_wavs = []
         all_beats = []
+        all_beat_feats = []
         assert len(motions) == len(features)
-        for motion, feature, wav in zip(motions, features, wavs):
+        for motion, feature, wav, base_feat in zip(motions, features, wavs, base_features):
             # make sure name is matching
             m_name = os.path.splitext(os.path.basename(motion))[0]
             f_name = os.path.splitext(os.path.basename(feature))[0]
             w_name = os.path.splitext(os.path.basename(wav))[0]
-            assert m_name == f_name == w_name, str((motion, feature, wav))
+            b_name = os.path.splitext(os.path.basename(base_feat))[0]
+            assert m_name == f_name == w_name == b_name, str((motion, feature, wav, base_feat))
             # load motion
             data = pickle.load(open(motion, "rb"))
             pos = data["pos"]
@@ -140,6 +147,7 @@ class AISTPPDataset(Dataset):
             all_q.append(q)
             all_names.append(feature)
             all_wavs.append(wav)
+            all_beat_feats.append(base_feat)
 
         all_pos = np.array(all_pos)  # N x seq x 3
         all_q = np.array(all_q)  # N x seq x (joint * 3)
@@ -153,7 +161,7 @@ class AISTPPDataset(Dataset):
             all_beats = all_beats[:, :: self.data_stride]
             all_beats = np.expand_dims(all_beats, -1)
 
-        data = {"pos": all_pos, "q": all_q, "filenames": all_names, "wavs": all_wavs, "beats": all_beats}
+        data = {"pos": all_pos, "q": all_q, "filenames": all_names, "wavs": all_wavs, "beats": all_beats, "beats_fnames": all_beat_feats}
         return data
 
     def process_dataset(self, root_pos, local_q):

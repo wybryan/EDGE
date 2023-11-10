@@ -14,6 +14,7 @@ from args import parse_test_opt
 from data.slice import slice_audio
 from EDGE import EDGE
 from data.audio_extraction.baseline_features import extract as baseline_extract
+from data.audio_extraction.baseline_features import beat_extract
 from data.audio_extraction.jukebox_features import extract as juke_extract
 
 # sort filenames that look like songname_slice{number}.ext
@@ -46,6 +47,7 @@ def test(opt):
     temp_dir_list = []
     all_cond = []
     all_filenames = []
+    all_beat_feat = []
     if opt.use_cached_features:
         print("Using precomputed features")
         # all subdirectories
@@ -81,6 +83,8 @@ def test(opt):
             # randomly sample a chunk of length at most sample_size
             rand_idx = random.randint(0, max(0, len(file_list) - sample_size))
             cond_list = []
+            beat_list = []
+
             # generate juke representations
             print(f"Computing features for {wav_file}")
             for idx, file in enumerate(tqdm(file_list)):
@@ -92,6 +96,7 @@ def test(opt):
                 #     audio, layers=[66], downsample_target_rate=30
                 # )[66]
                 reps, _ = feature_func(file)
+                beat_per_file = beat_extract(file)
                 # save reps
                 if opt.cache_features:
                     featurename = os.path.splitext(file)[0] + ".npy"
@@ -100,11 +105,14 @@ def test(opt):
                 # to actually use for generation
                 if rand_idx <= idx < rand_idx + sample_size:
                     cond_list.append(reps)
+                    beat_list.append(beat_per_file)
             cond_list = torch.from_numpy(np.array(cond_list))
+            beat_list = torch.from_numpy(np.array(beat_list)).to(torch.int64)
+            all_beat_feat.append(beat_list)
             all_cond.append(cond_list)
             all_filenames.append(file_list[rand_idx : rand_idx + min(len(file_list), sample_size)])
 
-    model = EDGE(opt.feature_type, opt.checkpoint, EMA=False)
+    model = EDGE(opt.feature_type, opt.checkpoint, EMA=False, use_music_beat_feat=opt.use_music_beat_feat)
     model.eval()
 
     # directory for optionally saving the dances for eval
@@ -116,8 +124,9 @@ def test(opt):
     print("Generating dances")
     for i in range(len(all_cond)):
         data_tuple = None, all_cond[i], all_filenames[i]
+        beat_feat = all_beat_feat[i]
         model.render_sample(
-            data_tuple, "test", opt.render_dir, render_count=-1, fk_out=fk_out, render=not opt.no_render
+            data_tuple, "test", opt.render_dir, beat_feat, render_count=-1, fk_out=fk_out, render=not opt.no_render
         )
     print("Done")
     torch.cuda.empty_cache()
@@ -129,10 +138,12 @@ if __name__ == "__main__":
     opt = parse_test_opt()
     opt.out_length = 10
     opt.no_render = True
-    exp_name = "exp18"
-    for i in range(10):
+    opt.use_music_beat_feat = True
+    exp_name = "exp29"
+    for i in range(1):
         epoch_no = i + 1
         opt.motion_save_dir = f"eval/{exp_name}/beats_on_motion_{epoch_no}e"
         opt.render_dir = opt.motion_save_dir
         opt.checkpoint = f"/Projects/Github/paper_project/EDGE/runs/train/{exp_name}/weights/train-{epoch_no}.pt"
+        # model = EDGE(opt.feature_type, opt.checkpoint, EMA=False, use_music_beat_feat=opt.use_music_beat_feat)
         test(opt)

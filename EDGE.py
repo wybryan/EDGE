@@ -35,6 +35,7 @@ class EDGE:
         checkpoint_path="",
         load_optim_state=False,
         use_beats_anno=False,
+        use_music_beat_feat=False,
         freeze_layers=False,
         normalizer=None,
         EMA=True,
@@ -42,6 +43,7 @@ class EDGE:
         weight_decay=0.02,
     ):
         self.use_beats_anno = use_beats_anno
+        self.use_music_beat_feat = use_music_beat_feat
         ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
         self.accelerator = Accelerator(kwargs_handlers=[ddp_kwargs])
         state = AcceleratorState()
@@ -78,9 +80,6 @@ class EDGE:
             cond_feature_dim=feature_dim,
             activation=F.gelu,
         )
-        if freeze_layers:
-            print("freeze layers")
-            self.freeze_layers(model)
 
         smpl = SMPLSkeleton(self.accelerator.device)
         diffusion = GaussianDiffusion(
@@ -97,14 +96,11 @@ class EDGE:
             guidance_weight=2,
         )
 
-        print(
-            "Model has {} parameters".format(sum(y.numel() for y in model.parameters()))
-        )
-
         self.model = self.accelerator.prepare(model)
-        self.diffusion = diffusion.to(self.accelerator.device)
-        optim = Adan(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate, weight_decay=weight_decay)
-        self.optim = self.accelerator.prepare(optim)
+        
+        # for fine-tuned checkpoint
+        if "beat_proj.fc1.weight" in checkpoint["model_state_dict"].keys():
+            self.accelerator.unwrap_model(self.model).add_beat_projection_module()
 
         if checkpoint_path != "":
             self.model.load_state_dict(
@@ -113,12 +109,33 @@ class EDGE:
                     num_processes,
                 )
             )
-            if load_optim_state:
-                self.optim.load_state_dict(checkpoint["optimizer_state_dict"])
+
+        # for original pretrained checkpoint
+        if "beat_proj.fc1.weight" not in checkpoint["model_state_dict"].keys():
+            if use_music_beat_feat:
+                self.accelerator.unwrap_model(self.model).add_beat_projection_module()
+
+        if freeze_layers:
+            print("freeze layers")
+            self.freeze_layers(model)
+        
+        if self.accelerator.is_main_process:
+            print(
+                "Model has {} parameters".format(sum(y.numel() for y in model.parameters()))
+            )
+            print(self.model)
+
+        optim = Adan(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate, weight_decay=weight_decay)
+        self.optim = self.accelerator.prepare(optim)
+
+        if checkpoint_path != "" and load_optim_state:
+            self.optim.load_state_dict(checkpoint["optimizer_state_dict"])
+
+        self.diffusion = diffusion.to(self.accelerator.device)        
 
     def freeze_layers(self, model):
         for name, param in model.named_parameters():
-            if not name.startswith("final_layer"):
+            if not (name.startswith("final_layer") or name.startswith("beat_proj")):
                 param.requires_grad = False
 
     def eval(self):
@@ -210,14 +227,17 @@ class EDGE:
             avg_footloss = 0
             # train
             self.train()
-            for step, (x, cond, filename, wavnames, beats) in enumerate(
+            for step, (x, cond, filename, wavnames, beats, beat_feat) in enumerate(
                 load_loop(train_data_loader)
             ):
                 if not self.use_beats_anno:
                     beats = []
 
+                if not self.use_music_beat_feat:
+                    beat_feat = None
+
                 total_loss, (loss, v_loss, fk_loss, foot_loss) = self.diffusion(
-                    x, cond, beats, t_override=None
+                    x, cond, beats, beat_feat, t_override=None
                 )
                 self.optim.zero_grad()
                 self.accelerator.backward(total_loss)
@@ -267,7 +287,7 @@ class EDGE:
                     shape = (render_count, self.horizon, self.repr_dim)
                     print("Generating Sample")
                     # draw a music from the test dataset
-                    (x, cond, filename, wavnames, _) = next(iter(test_data_loader))
+                    (x, cond, filename, wavnames, beats, beat_feat) = next(iter(test_data_loader))
                     cond = cond.to(self.accelerator.device)
                     self.diffusion.render_sample(
                         shape,
@@ -275,6 +295,7 @@ class EDGE:
                         self.normalizer,
                         epoch,
                         os.path.join(opt.render_dir, "train_" + opt.exp_name),
+                        beat_feat=beat_feat,
                         name=wavnames[:render_count],
                         sound=True,
                     )
@@ -335,7 +356,7 @@ class EDGE:
            
 
     def render_sample(
-        self, data_tuple, label, render_dir, render_count=-1, fk_out=None, render=True
+        self, data_tuple, label, render_dir, beat_feat=None, render_count=-1, fk_out=None, render=True
     ):
         _, cond, wavname = data_tuple
         assert len(cond.shape) == 3
@@ -343,12 +364,17 @@ class EDGE:
             render_count = len(cond)
         shape = (render_count, self.horizon, self.repr_dim)
         cond = cond.to(self.accelerator.device)
+
+        if not self.use_music_beat_feat:
+            beat_feat = None
+
         self.diffusion.render_sample(
             shape,
             cond[:render_count],
             self.normalizer,
             label,
             render_dir,
+            beat_feat=beat_feat,
             name=wavname[:render_count],
             sound=True,
             mode="long",

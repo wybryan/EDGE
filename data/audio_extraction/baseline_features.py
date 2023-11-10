@@ -89,6 +89,50 @@ def extract(fpath, skip_completed=True, dest_dir="aist_baseline_feats"):
     return audio_feature, save_path
 
 
+def beat_extract(fpath):
+    audio_name = Path(fpath).stem
+    data, _ = librosa.load(fpath, sr=SR)
+
+    envelope = librosa.onset.onset_strength(y=data, sr=SR)  # (seq_len,)
+    mfcc = librosa.feature.mfcc(y=data, sr=SR, n_mfcc=20).T  # (seq_len, 20)
+    chroma = librosa.feature.chroma_cens(
+        y=data, sr=SR, hop_length=HOP_LENGTH, n_chroma=12
+    ).T  # (seq_len, 12)
+
+    peak_idxs = librosa.onset.onset_detect(
+        onset_envelope=envelope.flatten(), sr=SR, hop_length=HOP_LENGTH
+    )
+    peak_onehot = np.zeros_like(envelope, dtype=np.float32)
+    peak_onehot[peak_idxs] = 1.0  # (seq_len,)
+
+    try:
+        start_bpm = _get_tempo(audio_name)
+    except:
+        # determine manually
+        start_bpm = lr.beat.tempo(y=lr.load(fpath)[0])[0]
+
+    tempo, beat_idxs = librosa.beat.beat_track(
+        onset_envelope=envelope,
+        sr=SR,
+        hop_length=HOP_LENGTH,
+        start_bpm=start_bpm,
+        tightness=100,
+    )
+    beat_onehot = np.zeros_like(envelope, dtype=np.float32)
+    beat_onehot[beat_idxs] = 1.0  # (seq_len,)
+
+    audio_feature = np.concatenate(
+        [envelope[:, None], mfcc, chroma, peak_onehot[:, None], beat_onehot[:, None]],
+        axis=-1,
+    )
+
+    # chop to ensure exact shape
+    audio_feature = audio_feature[:5 * FPS]
+    assert (audio_feature.shape[0] - 5 * FPS) == 0, f"expected output to be ~5s, but was {audio_feature.shape[0] / FPS}"
+
+    return audio_feature[..., -1]
+
+
 def extract_folder(src, dest):
     fpaths = Path(src).glob("*")
     fpaths = sorted(list(fpaths))
