@@ -1,9 +1,10 @@
 import os
 from args import parse_train_opt
 from EDGE import EDGE
-
+from accelerate.utils import set_seed
 
 def train(opt):
+    set_seed(42)
     model = EDGE(
         opt.feature_type,
         learning_rate=opt.learning_rate,
@@ -26,13 +27,16 @@ if __name__ == "__main__":
     # opt.load_optim_state = False
     # opt.save_interval = 1
     # opt.start_epoch = 0
-    # opt.epochs = 5
+    # opt.epochs = 1
     # opt.feature_type = "jukebox"
     # opt.learning_rate = 1e-5
     opt.no_cache = True
     opt.force_reload = True
     opt.use_beats_anno = True
 
-    #freeze layers
-    # opt.freeze_layers = False
+    # # #freeze layers
+    # opt.freeze_layers = True
+
+    # # # add beat onehot feature
+    # opt.use_music_beat_feat = True
     train(opt)

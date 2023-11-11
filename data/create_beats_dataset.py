@@ -23,7 +23,7 @@ def create_dataset(opt):
     # split_data(opt.dataset_folder)
     # slice motions/music into sliding windows to create training dataset
     print("Slicing train data")
-    slice_beats_aistpp(f"train/motions", f"train/wavs", f"train/beats", opt.stride, opt.length)
+    slice_beats_aistpp(f"train/motions", f"train/wavs", f"train/beats", opt.stride, opt.length, beat_file_limit=opt.dataset_size)
 
     # copy music features
     copy_music_feats("train/wavs_sliced", "train_0/baseline_feats", "train/baseline_feats")
@@ -34,6 +34,7 @@ def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument("--stride", type=float, default=0.5, help="sliced data overlap length in seconds")
     parser.add_argument("--length", type=float, default=5.0, help="sliced data length in seconds")
+    parser.add_argument("--dataset_size", type=int, default=-1, help="# beat file limit")
     parser.add_argument(
         "--dataset_folder",
         type=str,
@@ -46,4 +47,5 @@ def parse_opt():
 
 if __name__ == "__main__":
     opt = parse_opt()
+    # opt.dataset_size = 80
     create_dataset(opt)

@@ -70,7 +70,7 @@ def slice_aistpp(motion_dir, wav_dir, stride=0.5, length=5):
         )
 
 
-def slice_beats_aistpp(motion_dir, wav_dir, beats_dir, stride=0.5, length=5, sliced_dir_str="_sliced"):
+def slice_beats_aistpp(motion_dir, wav_dir, beats_dir, stride=0.5, length=5, sliced_dir_str="_sliced", beat_file_limit=-1):
     wavs = sorted(glob.glob(f"{wav_dir}/*.wav"))
     motions = sorted(glob.glob(f"{motion_dir}/*.pkl"))
     beats = sorted(glob.glob(f"{beats_dir}/*.txt"))
@@ -80,8 +80,8 @@ def slice_beats_aistpp(motion_dir, wav_dir, beats_dir, stride=0.5, length=5, sli
     os.makedirs(wav_out, exist_ok=True)
     os.makedirs(motion_out, exist_ok=True)
     # assert len(wavs) == len(motions)
-    
-    for idx in tqdm(range(len(beats))):
+    n_file_limit = len(beats) if beat_file_limit == -1 else beat_file_limit
+    for idx in tqdm(range(n_file_limit)):
         beat = beats[idx]
         f_id = "".join(os.path.basename(beat).split(".")[:-1])
         motion = os.path.join(motion_dir, f_id + ".pkl")

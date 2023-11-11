@@ -29,6 +29,7 @@ class AISTPPDataset(Dataset):
         data_len: int = -1,
         include_contacts: bool = True,
         force_reload: bool = False,
+        dataset_size: int = -1,
     ):
         self.data_path = data_path
         self.raw_fps = 60
@@ -69,13 +70,25 @@ class AISTPPDataset(Dataset):
 
         # process data, convert to 6dof etc
         pose_input = self.process_dataset(data["pos"], data["q"])
-        self.data = {
-            "pose": pose_input,
-            "filenames": data["filenames"],
-            "wavs": data["wavs"],
-            "beats": data["beats"],
-            "beats_fnames": data["beats_fnames"],
-        }
+        if dataset_size != -1:
+            # force to use subset
+            pose_input = pose_input[:dataset_size]
+            self.data = {
+                "pose": pose_input,
+                "filenames": data["filenames"][:dataset_size],
+                "wavs": data["wavs"][:dataset_size],
+                "beats": data["beats"][:dataset_size],
+                "beats_fnames": data["beats_fnames"][:dataset_size],
+            }
+            print(f"Cut the dataset size to {dataset_size}...")
+        else:
+            self.data = {
+                "pose": pose_input,
+                "filenames": data["filenames"],
+                "wavs": data["wavs"],
+                "beats": data["beats"],
+                "beats_fnames": data["beats_fnames"],
+            }
         assert len(pose_input) == len(data["filenames"])
         self.length = len(pose_input)
 
