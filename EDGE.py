@@ -292,13 +292,17 @@ class EDGE:
                     # draw a music from the test dataset
                     (x, cond, filename, wavnames, beats, beat_feat) = next(iter(test_data_loader))
                     cond = cond.to(self.accelerator.device)
+                    if not self.use_music_beat_feat:
+                        beat_feat = None
+                    else:
+                        beat_feat = beat_feat[:render_count]
                     self.diffusion.render_sample(
                         shape,
                         cond[:render_count],
                         self.normalizer,
                         epoch,
                         os.path.join(opt.render_dir, "train_" + opt.exp_name),
-                        beat_feat=beat_feat[:render_count],
+                        beat_feat=beat_feat,
                         name=wavnames[:render_count],
                         sound=True,
                     )
