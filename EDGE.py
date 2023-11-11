@@ -140,6 +140,9 @@ class EDGE:
         for name, param in model.named_parameters():
             if not (name.startswith("final_layer") or name.startswith("beat_proj")):
                 param.requires_grad = False
+            else:
+                param.requires_grad = True
+                print(f"layer = {name} is tunable...")
 
     def eval(self):
         self.diffusion.eval()

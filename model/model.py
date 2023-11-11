@@ -334,8 +334,8 @@ class DanceDecoder(nn.Module):
         self.beat_proj = BeatProjection(self.latent_dim, self.latent_dim).to(next(self.parameters()).device)
 
     def guided_forward(self, x, cond_embed, times, beat_feat, guidance_weight):
-        unc = self.forward(x, cond_embed, times, beat_feat, cond_drop_prob=1)
-        conditioned = self.forward(x, cond_embed, times, beat_feat, cond_drop_prob=0)
+        unc, _ = self.forward(x, cond_embed, times, beat_feat, cond_drop_prob=1)
+        conditioned, _ = self.forward(x, cond_embed, times, beat_feat, cond_drop_prob=0)
 
         return unc + (conditioned - unc) * guidance_weight
 
@@ -385,12 +385,13 @@ class DanceDecoder(nn.Module):
         # attending to the conditional embedding
         output = self.seqTransDecoder(x, cond_tokens, t)
 
+        beat_feat = None
         if beat_seq is not None:
             beat_feat = self.beat_proj(beat_seq.to(x.device))
             output = output + beat_feat
 
         output = self.final_layer(output)
-        return output
+        return output, beat_feat
 
 
 class BeatProjection(nn.Module):
