@@ -3,9 +3,8 @@ import os
 from functools import cmp_to_key
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import random
+import pickle
 
-import jukemirlib
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -16,6 +15,8 @@ from EDGE import EDGE
 from data.audio_extraction.baseline_features import extract as baseline_extract
 from data.audio_extraction.baseline_features import beat_extract
 from data.audio_extraction.jukebox_features import extract as juke_extract
+
+from accelerate.utils import set_seed
 
 # sort filenames that look like songname_slice{number}.ext
 key_func = lambda x: int(os.path.splitext(x)[0].split("_")[-1].split("slice")[-1])
@@ -37,12 +38,17 @@ def stringintcmp_(a, b):
 
 stringintkey = cmp_to_key(stringintcmp_)
 
+def read_pkl(fname):
+    with open(fname, "rb") as f:
+        meta_data = pickle.load(f)
+    return meta_data
 
 def test(opt):
     feature_func = juke_extract if opt.feature_type == "jukebox" else baseline_extract
     stride_length = opt.stride
     sample_length = opt.out_length
     sample_size = int(sample_length / stride_length) - 1
+    rand_idx = 0
 
     temp_dir_list = []
     all_cond = []
@@ -54,15 +60,24 @@ def test(opt):
         dir_list = glob.glob(os.path.join(opt.feature_cache_dir, "*/"))
         for dir in dir_list:
             file_list = sorted(glob.glob(f"{dir}/*.wav"), key=stringintkey)
-            juke_file_list = sorted(glob.glob(f"{dir}/*.npy"), key=stringintkey)
+            juke_file_list = sorted(glob.glob(f"{dir}/*.pkl"), key=stringintkey)
             assert len(file_list) == len(juke_file_list)
             # random chunk after sanity check
-            rand_idx = random.randint(0, max(0, len(file_list) - sample_size))
-            file_list = file_list[rand_idx : rand_idx + sample_size]
+            # rand_idx = random.randint(0, max(0, len(file_list) - sample_size))
+            
+            file_list = file_list[rand_idx : rand_idx + min(len(file_list), sample_size)]
             juke_file_list = juke_file_list[rand_idx : rand_idx + min(len(file_list), sample_size)]
-            cond_list = [np.load(x) for x in juke_file_list]
+            
+            meta_data_dicts = [read_pkl(x) for x in juke_file_list]
+            cond_list = [x["music_feat"] for x in meta_data_dicts]
+            beat_list = [x["beat_onehot"] for x in meta_data_dicts]
+
+            cond_list = torch.from_numpy(np.array(cond_list))
+            beat_list = torch.from_numpy(np.array(beat_list)).to(torch.int64)
+
+            all_cond.append(cond_list)
+            all_beat_feat.append(beat_list)
             all_filenames.append(file_list)
-            all_cond.append(torch.from_numpy(np.array(cond_list)))
     else:
         print("Computing features for input music")
         for wav_file in glob.glob(os.path.join(opt.music_dir, "*.wav")):
@@ -81,15 +96,16 @@ def test(opt):
             slice_audio(wav_file, stride_length, 5.0, dirname)
             file_list = sorted(glob.glob(f"{dirname}/*.wav"), key=stringintkey)
             # randomly sample a chunk of length at most sample_size
-            rand_idx = random.randint(0, max(0, len(file_list) - sample_size))
+            # rand_idx = random.randint(0, max(0, len(file_list) - sample_size))
+            
             cond_list = []
             beat_list = []
-
             # generate juke representations
             print(f"Computing features for {wav_file}")
             for idx, file in enumerate(tqdm(file_list)):
                 # if not caching then only calculate for the interested range
                 if (not opt.cache_features) and (not (rand_idx <= idx < rand_idx + sample_size)):
+                    print(f"skipping {file} with index = {idx}...")
                     continue
                 # audio = jukemirlib.load_audio(file)
                 # reps = jukemirlib.extract(
@@ -99,18 +115,24 @@ def test(opt):
                 beat_per_file = beat_extract(file)
                 # save reps
                 if opt.cache_features:
-                    featurename = os.path.splitext(file)[0] + ".npy"
-                    np.save(featurename, reps)
+                    meta_data = dict(music_feat=reps, beat_onehot=beat_per_file)
+                    featurename = os.path.splitext(file)[0] + ".pkl"
+                    with open(featurename, "wb") as f:
+                        pickle.dump(meta_data, f)
+
                 # if in the random range, put it into the list of reps we want
                 # to actually use for generation
                 if rand_idx <= idx < rand_idx + sample_size:
                     cond_list.append(reps)
                     beat_list.append(beat_per_file)
+
             cond_list = torch.from_numpy(np.array(cond_list))
             beat_list = torch.from_numpy(np.array(beat_list)).to(torch.int64)
+            file_list = file_list[rand_idx : rand_idx + min(len(file_list), sample_size)]
+
             all_beat_feat.append(beat_list)
             all_cond.append(cond_list)
-            all_filenames.append(file_list[rand_idx : rand_idx + min(len(file_list), sample_size)])
+            all_filenames.append(file_list)
 
     model = EDGE(opt.feature_type, opt.checkpoint, EMA=False, use_music_beat_feat=opt.use_music_beat_feat)
     model.eval()
@@ -135,15 +157,16 @@ def test(opt):
 
 
 if __name__ == "__main__":
+    set_seed(42)
     opt = parse_test_opt()
+    opt.use_cached_features = True
     opt.out_length = 10
     opt.no_render = True
     opt.use_music_beat_feat = True
-    exp_name = "exp29"
+    exp_name = "exp46"
     for i in range(1):
         epoch_no = i + 1
         opt.motion_save_dir = f"eval/{exp_name}/beats_on_motion_{epoch_no}e"
         opt.render_dir = opt.motion_save_dir
         opt.checkpoint = f"/Projects/Github/paper_project/EDGE/runs/train/{exp_name}/weights/train-{epoch_no}.pt"
-        # model = EDGE(opt.feature_type, opt.checkpoint, EMA=False, use_music_beat_feat=opt.use_music_beat_feat)
         test(opt)

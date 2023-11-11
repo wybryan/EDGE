@@ -21,6 +21,7 @@ def parse_train_opt():
         "--wandb_pj_name", type=str, default="EDGE", help="project name"
     )
     parser.add_argument("--batch_size", type=int, default=64, help="batch size")
+    parser.add_argument("--dataset_size", type=int, default=-1, help="dataset size")
     parser.add_argument("--epochs", type=int, default=2000)
     parser.add_argument(
         "--force_reload", action="store_true", help="force reloads the datasets"
@@ -111,7 +112,7 @@ def parse_test_opt():
     parser.add_argument(
         "--feature_cache_dir",
         type=str,
-        default="cached_features/",
+        default="test_cached/",
         help="Where to save/load the features",
     )
     opt = parser.parse_args()
