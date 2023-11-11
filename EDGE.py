@@ -98,11 +98,11 @@ class EDGE:
 
         self.model = self.accelerator.prepare(model)
         
-        # for fine-tuned checkpoint
-        if "beat_proj.fc1.weight" in checkpoint["model_state_dict"].keys():
-            self.accelerator.unwrap_model(self.model).add_beat_projection_module()
-
         if checkpoint_path != "":
+            # for fine-tuned checkpoint
+            if "beat_proj.fc1.weight" in checkpoint["model_state_dict"].keys():
+                self.accelerator.unwrap_model(self.model).add_beat_projection_module()
+
             self.model.load_state_dict(
                 maybe_wrap(
                     checkpoint["ema_state_dict" if EMA else "model_state_dict"],
@@ -110,8 +110,11 @@ class EDGE:
                 )
             )
 
-        # for original pretrained checkpoint
-        if "beat_proj.fc1.weight" not in checkpoint["model_state_dict"].keys():
+            # for original pretrained checkpoint
+            if "beat_proj.fc1.weight" not in checkpoint["model_state_dict"].keys():
+                if use_music_beat_feat:
+                    self.accelerator.unwrap_model(self.model).add_beat_projection_module()
+        else:
             if use_music_beat_feat:
                 self.accelerator.unwrap_model(self.model).add_beat_projection_module()
 
@@ -295,7 +298,7 @@ class EDGE:
                         self.normalizer,
                         epoch,
                         os.path.join(opt.render_dir, "train_" + opt.exp_name),
-                        beat_feat=beat_feat,
+                        beat_feat=beat_feat[:render_count],
                         name=wavnames[:render_count],
                         sound=True,
                     )
