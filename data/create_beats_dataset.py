@@ -6,6 +6,7 @@ import shutil
 from filter_split_data import *
 from slice import *
 
+from audio_extraction.BEATs_features import extract_folder as BEATs_extract
 
 def copy_music_feats(search_dir, source_dir, dest_dir):
     os.makedirs(dest_dir, exist_ok=True)
@@ -29,6 +30,10 @@ def create_dataset(opt):
     copy_music_feats("train/wavs_sliced", "train_0/baseline_feats", "train/baseline_feats")
     copy_music_feats("train/wavs_sliced", "train_0/jukebox_feats", "train/jukebox_feats")
 
+    # generate features based on BEATs model
+    BEATs_extract(opt.beats_model_path, "train/wavs_sliced", "train/BEATs_feats")
+    BEATs_extract(opt.beats_model_path, "test/wavs_sliced", "test/BEATs_feats")
+
 
 def parse_opt():
     parser = argparse.ArgumentParser()
@@ -41,11 +46,18 @@ def parse_opt():
         default="edge_aistpp",
         help="folder containing motions and music",
     )
+    parser.add_argument(
+        "--beats_model_path",
+        type=str,
+        default='audio_extraction/beats/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt',
+        help="BEATs model weights",
+    )
     opt = parser.parse_args()
     return opt
 
 
 if __name__ == "__main__":
     opt = parse_opt()
-    # opt.dataset_size = 80
+    # opt.dataset_size = 20
+    # opt.beats_model_path = 'audio_extraction/beats/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt'
     create_dataset(opt)

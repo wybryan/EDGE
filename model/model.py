@@ -331,7 +331,8 @@ class DanceDecoder(nn.Module):
 
     def add_beat_projection_module(self):
         # beat projector
-        self.beat_proj = BeatProjection(self.latent_dim, self.latent_dim).to(next(self.parameters()).device)
+        # self.beat_proj = BeatProjection(self.latent_dim, self.latent_dim).to(next(self.parameters()).device)
+        self.beat_proj = BeatProjection2(self.latent_dim, self.latent_dim).to(next(self.parameters()).device)
 
     def guided_forward(self, x, cond_embed, times, beat_feat, guidance_weight):
         unc, _ = self.forward(x, cond_embed, times, beat_feat, cond_drop_prob=1)
@@ -404,6 +405,25 @@ class BeatProjection(nn.Module):
     def forward(self, x):
         x = F.one_hot(x, num_classes=2)
         x = x.to(self.fc1.weight.dtype)
+        x = self.fc1(x)
+        x = self.relu1(x)
+        x = self.out(x)
+        return x
+
+class BeatProjection2(nn.Module):
+    def __init__(self, hidden_size=512, output_size=512):
+        super(BeatProjection2, self).__init__()
+        self.t_align = nn.Linear(248, 150)
+        self.fc1 = nn.Linear(768, hidden_size)
+        self.relu1 = nn.ReLU()
+        self.out = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+        # align L: (B,D,L)
+        x = x.transpose(2,1)
+        x = self.t_align(x)
+        # align D: (B,L,D)
+        x = x.transpose(2,1)
         x = self.fc1(x)
         x = self.relu1(x)
         x = self.out(x)

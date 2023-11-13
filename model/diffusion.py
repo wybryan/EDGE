@@ -466,15 +466,12 @@ class GaussianDiffusion(nn.Module):
 
         if len(beat_mask) > 0:
             # add beat loss
-            # mask_total = torch.logical_or(beat_onehot.unsqueeze(-1), beat_mask).int()
             loss = loss + beat_mask * loss.mean(dim=-1, keepdim=True)
         
         if beat_feat is not None:
             beat_feat_avg = beat_feat.to(torch.float32).mean(dim=-1, keepdim=True)
             beat_feat_loss = self.loss_fn(beat_feat_avg, beat_mask.to(torch.float32), reduction="none")
             loss = loss + beat_feat_loss
-            pass
-            # beat_feat_loss = beat_feat_loss.mean()
 
         loss = reduce(loss, "b ... -> b (...)", "mean")
         loss = loss * extract(self.p2_loss_weight, t, loss.shape)

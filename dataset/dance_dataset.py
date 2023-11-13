@@ -98,8 +98,10 @@ class AISTPPDataset(Dataset):
     def __getitem__(self, idx):
         filename_ = self.data["filenames"][idx]
         feature = torch.from_numpy(np.load(filename_))
-        beat_onehot = torch.from_numpy(np.load(self.data["beats_fnames"][idx]))[..., -1]
-        beat_onehot = beat_onehot.long()
+        # beat_onehot = torch.from_numpy(np.load(self.data["beats_fnames"][idx]))[..., -1]
+        # beat_onehot = beat_onehot.long()
+        
+        beat_onehot = torch.from_numpy(np.load(self.data["beats_fnames"][idx]))
         beats_mask = []
         if len(self.data["beats"]) > 0:
             beats_mask = self.data["beats"][idx]
@@ -123,7 +125,8 @@ class AISTPPDataset(Dataset):
 
         motion_path = os.path.join(split_data_path, "motions_sliced")
         sound_path = os.path.join(split_data_path, f"{self.feature_type}_feats")
-        base_feat_path = os.path.join(split_data_path, f"baseline_feats")
+        # base_feat_path = os.path.join(split_data_path, f"baseline_feats")
+        base_feat_path = os.path.join(split_data_path, f"BEATs_feats")
         wav_path = os.path.join(split_data_path, f"wavs_sliced")
         # sort motions and sounds
         motions = sorted(glob.glob(os.path.join(motion_path, "*.pkl")))
