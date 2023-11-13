@@ -16,7 +16,7 @@ from args import parse_test_opt
 from data.slice import slice_audio
 from EDGE import EDGE
 from data.audio_extraction.baseline_features import extract as baseline_extract
-from data.audio_extraction.BEATs_features import extract as beat_extract
+from data.audio_extraction.BEATs_features import extract as beat_extract, init_model
 from data.audio_extraction.jukebox_features import extract as juke_extract
 
 from accelerate.utils import set_seed
@@ -83,6 +83,7 @@ def test(opt):
             all_filenames.append(file_list)
     else:
         print("Computing features for input music")
+        BEATs_model = init_model(opt.beats_model_path)
         for wav_file in glob.glob(os.path.join(opt.music_dir, "*.wav")):
             # create temp folder (or use the cache folder if specified)
             if opt.cache_features:
@@ -115,7 +116,7 @@ def test(opt):
                 #     audio, layers=[66], downsample_target_rate=30
                 # )[66]
                 reps, _ = feature_func(file)
-                beat_per_file, _ = beat_extract(file)
+                beat_per_file, _ = beat_extract(file, BEATs_model)
                 # save reps
                 if opt.cache_features:
                     meta_data = dict(music_feat=reps, beat_onehot=beat_per_file)
@@ -130,7 +131,7 @@ def test(opt):
                     beat_list.append(beat_per_file)
 
             cond_list = torch.from_numpy(np.array(cond_list))
-            beat_list = torch.from_numpy(np.array(beat_list)).to(torch.int64)
+            beat_list = torch.from_numpy(np.array(beat_list))
             file_list = file_list[rand_idx : rand_idx + min(len(file_list), sample_size)]
 
             all_beat_feat.append(beat_list)
@@ -162,12 +163,13 @@ def test(opt):
 if __name__ == "__main__":
     set_seed(42)
     opt = parse_test_opt()
+    # opt.cache_features = True
     opt.use_cached_features = True
     opt.out_length = 10
     opt.no_render = True
-    opt.use_music_beat_feat = False
+    opt.use_music_beat_feat = True
 
-    exp_name = "exp70"
+    exp_name = "exp71"
     for i in range(1):
         epoch_no = i + 1
         opt.motion_save_dir = f"eval/{exp_name}/beats_on_motion_{epoch_no}e"
