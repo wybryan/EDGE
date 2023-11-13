@@ -174,6 +174,7 @@ class EDGE:
                 backup_path=opt.processed_data_dir,
                 train=True,
                 force_reload=opt.force_reload,
+                dataset_size=opt.dataset_size,
             )
             test_dataset = AISTPPDataset(
                 data_path=opt.data_path,
@@ -313,56 +314,61 @@ class EDGE:
         if self.accelerator.is_main_process:
             wandb.run.finish()
 
-    # @torch.no_grad() -- diffusion model already has this
-    def validate_loop(self, opt, output_dir, data_idx_list=None, data_fname_list=None):
-        test_dataset = AISTPPDataset(
-            data_path=opt.data_path,
-            backup_path=opt.processed_data_dir,
-            train=False,
-            normalizer=self.normalizer,
-            force_reload=opt.force_reload,
-        )
+    # # @torch.no_grad() -- diffusion model already has this
+    # def validate_loop(self, opt, output_dir, data_idx_list=None, data_fname_list=None):
+    #     test_dataset = AISTPPDataset(
+    #         data_path=opt.data_path,
+    #         backup_path=opt.processed_data_dir,
+    #         train=False,
+    #         normalizer=self.normalizer,
+    #         force_reload=opt.force_reload,
+    #     )
 
-        # data loaders
-        # decide number of workers based on cpu count
-        num_cpus = multiprocessing.cpu_count()
-        test_data_loader = DataLoader(
-            test_dataset,
-            batch_size=1,
-            shuffle=False,
-            num_workers=2,
-            pin_memory=True,
-            drop_last=True,
-        )
+    #     # data loaders
+    #     # decide number of workers based on cpu count
+    #     num_cpus = multiprocessing.cpu_count()
+    #     test_data_loader = DataLoader(
+    #         test_dataset,
+    #         batch_size=1,
+    #         shuffle=False,
+    #         num_workers=2,
+    #         pin_memory=True,
+    #         drop_last=True,
+    #     )
         
-        self.eval()
-        # generate a sample
-        for idx, (x, cond, filename, wavnames, _) in enumerate(test_data_loader):
-            if data_idx_list is not None:
-                if idx not in data_idx_list:
-                    continue
-            if data_fname_list is not None:
-                fname = os.path.basename(wavnames[0])
-                fname = "".join(fname.split(".")[:-1])
-                if fname not in data_fname_list:
-                    continue
+    #     self.eval()
+    #     # generate a sample
+    #     for idx, (x, cond, filename, wavnames, _, beat_feat) in enumerate(test_data_loader):
+    #         if data_idx_list is not None:
+    #             if idx not in data_idx_list:
+    #                 continue
+    #         if data_fname_list is not None:
+    #             fname = os.path.basename(wavnames[0])
+    #             fname = "".join(fname.split(".")[:-1])
+    #             if fname not in data_fname_list:
+    #                 continue
 
-            print("Generating Sample")
-            render_count = 1
-            cond = cond.to(self.accelerator.device)
-            os.makedirs(output_dir, exist_ok=True)
-            self.diffusion.render_sample(
-                (render_count, self.horizon, self.repr_dim),
-                cond[:render_count],
-                self.normalizer,
-                idx,
-                render_out=output_dir,
-                fk_out=output_dir,
-                name=wavnames[:render_count],
-                sound=True,
-                mode="normal",
-                render=True,
-            )
+    #         print("Generating Sample")
+    #         render_count = 1
+    #         cond = cond.to(self.accelerator.device)
+    #         if not self.use_music_beat_feat:
+    #             beat_feat = None
+    #         else:
+    #             beat_feat = beat_feat[:render_count]
+    #         os.makedirs(output_dir, exist_ok=True)
+    #         self.diffusion.render_sample(
+    #             (render_count, self.horizon, self.repr_dim),
+    #             cond[:render_count],
+    #             self.normalizer,
+    #             idx,
+    #             render_out=output_dir,
+    #             beat_feat=beat_feat,
+    #             fk_out=output_dir,
+    #             name=wavnames[:render_count],
+    #             sound=True,
+    #             mode="normal",
+    #             render=True,
+    #         )
            
 
     def render_sample(
