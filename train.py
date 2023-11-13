@@ -13,6 +13,7 @@ def train(opt):
         use_beats_anno=opt.use_beats_anno,
         use_music_beat_feat=opt.use_music_beat_feat,
         freeze_layers=opt.freeze_layers,
+        EMA=not opt.ema_off,
     )
     model.train_loop(opt)
 
@@ -30,9 +31,10 @@ if __name__ == "__main__":
     # opt.epochs = 1
     # opt.feature_type = "jukebox"
     # opt.learning_rate = 1e-5
-    opt.no_cache = True
-    opt.force_reload = True
-    opt.use_beats_anno = True
+    # opt.no_cache = True
+    # opt.force_reload = True
+    # opt.use_beats_anno = True
+    # opt.ema_off = True
 
     # # #freeze layers
     # opt.freeze_layers = True

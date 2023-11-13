@@ -9,6 +9,9 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
+from p_tqdm import p_map
+from vis import visualize_data
+
 from args import parse_test_opt
 from data.slice import slice_audio
 from EDGE import EDGE
@@ -162,11 +165,36 @@ if __name__ == "__main__":
     opt.use_cached_features = True
     opt.out_length = 10
     opt.no_render = True
-    opt.use_music_beat_feat = True
-    exp_name = "exp46"
+    opt.use_music_beat_feat = False
+
+    exp_name = "exp68"
     for i in range(1):
         epoch_no = i + 1
         opt.motion_save_dir = f"eval/{exp_name}/beats_on_motion_{epoch_no}e"
         opt.render_dir = opt.motion_save_dir
         opt.checkpoint = f"/Projects/Github/paper_project/EDGE/runs/train/{exp_name}/weights/train-{epoch_no}.pt"
         test(opt)
+    
+    # gen visual    
+    motions_all = []
+    out_dir_all = []
+    for i in range(1):
+        epoch_no = i + 1
+        motion_dir = f"/Projects/Github/paper_project/EDGE/eval/{exp_name}/beats_on_motion_{epoch_no}e"
+        motions = sorted(glob.glob(f"{motion_dir}/*.pkl"))
+        out_dir = motion_dir
+        out_dir = [out_dir for _ in range(len(motions))]
+        out_dir_all = out_dir_all + out_dir
+        motions_all = motions_all + motions
+
+    def inner(x):
+        motion_file, out_dir = x
+        visualize_data(motion_file, render_out_dir=out_dir, render_gif_fname=os.path.basename(motion_file) + ".gif")
+    p_map(inner, zip(motions_all, out_dir_all))
+    
+    # # baseline
+    # opt.motion_save_dir = f"/Projects/Github/paper_project/EDGE/eval/beats_off_motion"
+    # opt.render_dir = opt.motion_save_dir
+    # opt.checkpoint = f"/Projects/Github/paper_project/EDGE/checkpoint.pt"
+    # test(opt)
+

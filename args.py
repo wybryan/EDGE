@@ -24,10 +24,10 @@ def parse_train_opt():
     parser.add_argument("--dataset_size", type=int, default=-1, help="dataset size")
     parser.add_argument("--epochs", type=int, default=2000)
     parser.add_argument(
-        "--force_reload", action="store_true", help="force reloads the datasets"
+        "--force_reload", default=True, help="force reloads the datasets"
     )
     parser.add_argument(
-        "--no_cache", action="store_true", help="don't reuse / cache loaded dataset"
+        "--no_cache", default=True, help="don't reuse / cache loaded dataset"
     )
     parser.add_argument(
         "--save_interval",
@@ -55,6 +55,9 @@ def parse_train_opt():
         "--start_epoch", type=int, default=0, help="trained checkpoint path (optional)"
     )
     parser.add_argument("--learning_rate", type=float, default=0.0002, help="learning rate")
+    parser.add_argument(
+        "--ema_off", default=True, help="Not loading EMA weights"
+    )
     opt = parser.parse_args()
     return opt
 
