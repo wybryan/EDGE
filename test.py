@@ -16,7 +16,7 @@ from args import parse_test_opt
 from data.slice import slice_audio
 from EDGE import EDGE
 from data.audio_extraction.baseline_features import extract as baseline_extract
-from data.audio_extraction.baseline_features import beat_extract
+from data.audio_extraction.BEATs_features import extract as beat_extract
 from data.audio_extraction.jukebox_features import extract as juke_extract
 
 from accelerate.utils import set_seed
@@ -115,7 +115,7 @@ def test(opt):
                 #     audio, layers=[66], downsample_target_rate=30
                 # )[66]
                 reps, _ = feature_func(file)
-                beat_per_file = beat_extract(file)
+                beat_per_file, _ = beat_extract(file)
                 # save reps
                 if opt.cache_features:
                     meta_data = dict(music_feat=reps, beat_onehot=beat_per_file)
@@ -167,7 +167,7 @@ if __name__ == "__main__":
     opt.no_render = True
     opt.use_music_beat_feat = False
 
-    exp_name = "exp68"
+    exp_name = "exp70"
     for i in range(1):
         epoch_no = i + 1
         opt.motion_save_dir = f"eval/{exp_name}/beats_on_motion_{epoch_no}e"
