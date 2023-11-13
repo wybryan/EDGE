@@ -167,9 +167,9 @@ if __name__ == "__main__":
     opt.use_cached_features = True
     opt.out_length = 10
     opt.no_render = True
-    opt.use_music_beat_feat = True
+    opt.use_music_beat_feat = False
 
-    exp_name = "exp71"
+    exp_name = "exp70" # best results local ID
     for i in range(1):
         epoch_no = i + 1
         opt.motion_save_dir = f"eval/{exp_name}/beats_on_motion_{epoch_no}e"
