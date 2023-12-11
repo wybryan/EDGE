@@ -105,8 +105,10 @@ def slice_beats_n_motion(motion_file, beat_file, stride, length, num_slices, out
     def read_beat_file(beat_file):
         with open(beat_file) as f:
             beat_ids = f.readline()
-        beat_ids = beat_ids.split(",")
-        beat_ids = [int(v) for v in beat_ids]
+        # beat_ids = beat_ids.split(",")
+        # beat_ids = [int(v) for v in beat_ids]
+        beat_ids = beat_ids.strip().split(",")
+        beat_ids = [int(v) for v in beat_ids if v != ""]
         return beat_ids 
  
     motion = pickle.load(open(motion_file, "rb"))
@@ -120,8 +122,10 @@ def slice_beats_n_motion(motion_file, beat_file, stride, length, num_slices, out
     
     # prepare for downsampling by 2
     beat_mask = np.zeros((len(pos),), dtype="int")
-    if beat_ids[-1] >= len(pos):
-        beat_ids[-1] -= 1
+    while beat_ids[-1] > len(pos):
+        beat_ids = np.delete(beat_ids, -1)
+    if beat_ids[-1] == len(pos):
+        beat_ids[-1] = len(pos) - 1
     beat_mask[beat_ids - 1] = 1
     beat_mask[beat_ids] = 1
 
