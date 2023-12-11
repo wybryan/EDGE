@@ -27,8 +27,8 @@ def create_dataset(opt):
     slice_beats_aistpp(f"train/motions", f"train/wavs", f"train/beats", opt.stride, opt.length, beat_file_limit=opt.dataset_size)
 
     # copy music features
-    copy_music_feats("train/wavs_sliced", "train_0/baseline_feats", "train/baseline_feats")
-    copy_music_feats("train/wavs_sliced", "train_0/jukebox_feats", "train/jukebox_feats")
+    copy_music_feats("train/wavs_sliced", "train_full/baseline_feats", "train/baseline_feats")
+    copy_music_feats("train/wavs_sliced", "train_full/jukebox_feats", "train/jukebox_feats")
 
     # generate features based on BEATs model
     BEATs_extract(opt.beats_model_path, "train/wavs_sliced", "train/BEATs_feats")
