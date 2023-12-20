@@ -348,6 +348,58 @@ class SMPLSkeleton:
 
         return torch.stack(positions_world, dim=3).permute(0, 1, 3, 2)
 
+def process_dataset(root_pos, local_q):
+    # FK skeleton
+    smpl = SMPLSkeleton()
+    # to Tensor
+    root_pos = torch.Tensor(root_pos)
+    local_q = torch.Tensor(local_q)
+    # to ax
+    bs, sq, c = local_q.shape
+    local_q = local_q.reshape((bs, sq, -1, 3))
+
+    # AISTPP dataset comes y-up - rotate to z-up to standardize against the pretrain dataset
+    root_q = local_q[:, :, :1, :]  # sequence x 1 x 3
+    root_q_quat = axis_angle_to_quaternion(root_q)
+    rotation = torch.Tensor(
+        [0.7071068, 0.7071068, 0, 0]
+    )  # 90 degrees about the x axis
+    root_q_quat = quaternion_multiply(rotation, root_q_quat)
+    root_q = quaternion_to_axis_angle(root_q_quat)
+    local_q[:, :, :1, :] = root_q
+
+    # don't forget to rotate the root position too 😩
+    pos_rotation = RotateAxisAngle(90, axis="X", degrees=True)
+    root_pos = pos_rotation.transform_points(
+        root_pos
+    )  # basically (y, z) -> (-z, y), expressed as a rotation for readability
+
+    # do FK
+    positions = smpl.forward(local_q, root_pos)  # batch x sequence x 24 x 3
+    feet = positions[:, :, (7, 8, 10, 11)]
+    feetv = torch.zeros(feet.shape[:3])
+    feetv[:, :-1] = (feet[:, 1:] - feet[:, :-1]).norm(dim=-1)
+    contacts = (feetv < 0.01).to(local_q)  # cast to right dtype
+
+    return positions, contacts
+
+def process_gt_motion(motion):
+    if isinstance(motion, str):
+        motion_file = motion
+        with open(motion_file, "rb") as f:
+            motion = pickle.load(f)
+    
+    # this is for AST++ raw dataset pkl
+    pos, q = motion["pos"], motion["q"]
+    scale = motion["scale"][0]
+    
+    # normalize root position
+    pos /= scale
+    
+    pos = np.expand_dims(pos, 0)
+    q = np.expand_dims(q, 0)
+    poses, contacts = process_dataset(pos, q)
+    return poses, contacts
 
 def visualize_data(
     motion_file_or_motion_data,
@@ -356,41 +408,6 @@ def visualize_data(
     render_out_dir="debug/",
     render_gif_fname="vis.gif",
 ):
-    def process_dataset(root_pos, local_q):
-        # FK skeleton
-        smpl = SMPLSkeleton()
-        # to Tensor
-        root_pos = torch.Tensor(root_pos)
-        local_q = torch.Tensor(local_q)
-        # to ax
-        bs, sq, c = local_q.shape
-        local_q = local_q.reshape((bs, sq, -1, 3))
-
-        # AISTPP dataset comes y-up - rotate to z-up to standardize against the pretrain dataset
-        root_q = local_q[:, :, :1, :]  # sequence x 1 x 3
-        root_q_quat = axis_angle_to_quaternion(root_q)
-        rotation = torch.Tensor(
-            [0.7071068, 0.7071068, 0, 0]
-        )  # 90 degrees about the x axis
-        root_q_quat = quaternion_multiply(rotation, root_q_quat)
-        root_q = quaternion_to_axis_angle(root_q_quat)
-        local_q[:, :, :1, :] = root_q
-
-        # don't forget to rotate the root position too 😩
-        pos_rotation = RotateAxisAngle(90, axis="X", degrees=True)
-        root_pos = pos_rotation.transform_points(
-            root_pos
-        )  # basically (y, z) -> (-z, y), expressed as a rotation for readability
-
-        # do FK
-        positions = smpl.forward(local_q, root_pos)  # batch x sequence x 24 x 3
-        feet = positions[:, :, (7, 8, 10, 11)]
-        feetv = torch.zeros(feet.shape[:3])
-        feetv[:, :-1] = (feet[:, 1:] - feet[:, :-1]).norm(dim=-1)
-        contacts = (feetv < 0.01).to(local_q)  # cast to right dtype
-
-        return positions, contacts
-
     if isinstance(motion_file_or_motion_data, str):
         motion_file = motion_file_or_motion_data
         with open(motion_file, "rb") as f:
@@ -403,15 +420,7 @@ def visualize_data(
             if fps_override is not None:
                 raw_fps = fps_override
 
-            pos, q = motion["pos"], motion["q"]
-            scale = motion["scale"][0]
-            
-            # normalize root position
-            pos /= scale
-            
-            pos = np.expand_dims(pos, 0)
-            q = np.expand_dims(q, 0)
-            poses, contacts = process_dataset(pos, q)
+            poses, contacts = process_gt_motion(motion)
 
             if wav_file is not None:
                 render_gif_fname = wav_file
@@ -500,3 +509,16 @@ def visualize_data(
         )
     else:
         raise NotImplementedError
+
+def render_coord_convert_edge_to_motion_gpt(smpl_data):
+    if isinstance(smpl_data, torch.Tensor):
+        smpl_data = smpl_data.cpu().numpy()
+
+    # EDGE -> MOTION_GPT coordinates
+    # 0,1,2 -> 0,2,1
+    # 2 -> -2
+    # 24p -> 22p
+    smpl_data = smpl_data[..., [0,2,1]]
+    smpl_data[..., 2] = -1 * smpl_data[..., 2]
+    smpl_data = smpl_data[:, :22, :]
+    return smpl_data
