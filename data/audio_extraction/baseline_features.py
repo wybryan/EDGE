@@ -132,6 +132,57 @@ def beat_extract(fpath):
 
     return audio_feature[..., -1]
 
+def find_music_beat(fpath):
+    audio_name = Path(fpath).stem
+    data, _ = librosa.load(fpath, sr=SR)
+
+    envelope = librosa.onset.onset_strength(y=data, sr=SR)  # (seq_len,)
+    mfcc = librosa.feature.mfcc(y=data, sr=SR, n_mfcc=20).T  # (seq_len, 20)
+    chroma = librosa.feature.chroma_cens(
+        y=data, sr=SR, hop_length=HOP_LENGTH, n_chroma=12
+    ).T  # (seq_len, 12)
+
+    peak_idxs = librosa.onset.onset_detect(
+        onset_envelope=envelope.flatten(), sr=SR, hop_length=HOP_LENGTH
+    )
+    peak_onehot = np.zeros_like(envelope, dtype=np.float32)
+    peak_onehot[peak_idxs] = 1.0  # (seq_len,)
+
+    try:
+        start_bpm = _get_tempo(audio_name)
+    except:
+        # determine manually
+        start_bpm = lr.beat.tempo(y=lr.load(fpath)[0])[0]
+
+    tempo, beat_idxs = librosa.beat.beat_track(
+        onset_envelope=envelope,
+        sr=SR,
+        hop_length=HOP_LENGTH,
+        start_bpm=start_bpm,
+        tightness=100,
+    )
+
+    m_beat_t_sec = (beat_idxs / len(envelope)) * (len(envelope) / FPS)
+    return m_beat_t_sec
+
+def find_music_beat_2(fpath):
+    audio_name = Path(fpath).stem
+    data, _ = librosa.load(fpath, sr=SR)
+
+    try:
+        start_bpm = _get_tempo(audio_name)
+    except:
+        # determine manually
+        start_bpm = lr.beat.tempo(y=lr.load(fpath)[0])[0]
+
+    tempo, beat_idxs = librosa.beat.beat_track(
+        y=data,
+        sr=SR,
+        start_bpm=start_bpm,
+        bpm=start_bpm,
+    )
+    m_beat_t_sec = librosa.frames_to_time(beat_idxs, sr=SR)
+    return m_beat_t_sec
 
 def extract_folder(src, dest):
     fpaths = Path(src).glob("*")

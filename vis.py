@@ -18,6 +18,10 @@ from tqdm import tqdm
 
 from dataset.quaternion import ax_from_6v
 
+# BeatAlignScore
+from scipy.signal import argrelextrema
+from data.audio_extraction.baseline_features import find_music_beat, find_music_beat_2
+
 smpl_joints = [
     "root",  # 0
     "lhip",  # 1
@@ -522,3 +526,92 @@ def render_coord_convert_edge_to_motion_gpt(smpl_data):
     smpl_data[..., 2] = -1 * smpl_data[..., 2]
     smpl_data = smpl_data[:, :22, :]
     return smpl_data
+
+def find_local_min(arr, threshold_ratio=0.1):
+    n = len(arr)
+    local_mins = []
+    if n < 3:
+        return local_mins  # 无法找到局部最小值
+    threshold = max(arr) * threshold_ratio  # 计算相对阈值
+    # threshold = threshold_ratio  # 计算相对阈值
+    for i in range(1, n - 1):
+        if arr[i] < arr[i - 1] and arr[i] < arr[i + 1] and arr[i] < threshold:
+            local_mins.append(i)
+    return local_mins  # 没有找到局部最小值
+
+def find_kinematic_beat(pose_seq, fps=30):
+    # compute kinetic velocity trajectory
+    # pose_seq = [b, s, 24, 3]
+    vol_curve = pose_seq[:, 1:, :, :] - pose_seq[:, :-1, :, :]
+    vol_curve = vol_curve.squeeze(0)
+    num_frame = vol_curve.shape[0]
+    vol_curve = vol_curve.reshape((num_frame, -1))
+    vol_curve = np.linalg.norm(vol_curve, ord=2, axis=-1)
+
+    # plt.figure(1)
+    # plt.plot(vol_curve)
+    # get velocity beat
+    # 示例用法
+
+    threshold_ratio = 0.3  # 相对阈值比例
+    lm_index = find_local_min(vol_curve, threshold_ratio)
+    lm_index = np.array(lm_index)
+    if len(lm_index) == 0:
+        print("not find local min")
+
+
+    # lm_index = argrelextrema(vol_curve, np.less)[0]
+    # lm_index = np.array([19, 64, 109, 152, 198, 243, 288])
+    lm_t_sec = (lm_index / num_frame) * (num_frame / fps)
+    return lm_t_sec
+
+def calc_beat_align_score(k_beats, m_beats, SIGMA=3):
+    a_sum = 0
+    for x_t_i in k_beats:
+        min_val = np.min(np.square(x_t_i - m_beats))
+        a_val = np.exp( -(min_val / ( 2*(SIGMA**2) )) )
+        print(a_val)
+        a_sum = a_sum + a_val
+    beat_align_score = a_sum / len(k_beats)
+    return beat_align_score
+
+def compute_BeatAlignScore_single(motion_pkl_path, music_wav_path):
+    motion_file = motion_pkl_path
+    with open(motion_file, "rb") as f:
+        motion = pickle.load(f)
+
+    if "scale" in motion.keys():
+        # this is AST++ dataset
+        # hardcoded in skeleton_render
+        raw_fps = 60
+        poses, contacts = process_gt_motion(motion)
+
+        # down sample to 30FPS
+        poses = poses[:, ::2, :, :]
+    elif "full_pose" in motion.keys():
+        # this is model generated motion pickle
+        raw_fps = 30
+        poses = motion["full_pose"]
+        if len(poses.shape) < 4:
+            poses = np.expand_dims(poses, 0)
+    else:
+        raise NotImplementedError
+
+    # find kinematic beat
+    k_beats = find_kinematic_beat(poses, fps=30)
+
+    # find music beat
+    m_beats = find_music_beat_2(music_wav_path)
+
+    # compute BeatAlignScore
+    beat_align_score = calc_beat_align_score(k_beats, m_beats, 1.5)
+    print(beat_align_score)
+    return beat_align_score
+
+def compute_BeatAlignScore(motion_pkl_paths, music_wav_paths):
+    scores = []
+    for motion_seq, music_wav in zip(motion_pkl_paths, music_wav_paths):
+        a_score = compute_BeatAlignScore_single(motion_seq, music_wav)
+        scores.append(a_score)
+    avg_score = np.mean(scores)
+    return avg_score
